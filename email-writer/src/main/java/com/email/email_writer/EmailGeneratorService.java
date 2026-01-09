@@ -4,17 +4,29 @@ package com.email.email_writer;
 import com.email.email_writer.contoller.EmailRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.Map;
 
 @Service
 public class EmailGeneratorService {
 
+    private final WebClient webClient;
+
+    // by adding construct this will injected during the runtime
+    public EmailGeneratorService(WebClient.Builder webClientBuilder) {
+        this.webClient = webClientBuilder.build();
+    }
+
+
     @Value("${gemeni.api.url}")
     private String gemeniApiUrl ;
 
     @Value("${gemeni.api.key}")
     private String gemeniApiKey ;
+
 
     public String generateEmailReply(EmailRequest emailRequest){
         // Build the prompt ( go to gemeni api)
@@ -32,10 +44,34 @@ public class EmailGeneratorService {
         );
 
         // Do request and get response
+        String response = webClient.post()
+                .uri(gemeniApiUrl + gemeniApiKey)
+                .header("Content-Type" , "application/json")
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
 
 
 
-        // Return response
+        // Extract Response and Return Response
+        return extractResponseContent(response);
+    }
+
+    private String extractResponseContent(String response) {
+        try{
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode rootNode = mapper.readTree(response);
+            return rootNode.path("candidates")
+                    .get(0)
+                    .path("content")
+                    .path("parts")
+                    .get(0)
+                    .path("text")
+                    .asText();
+
+        }catch ( Exception e){
+            return " Error processing request : " + e.getMessage();
+        }
     }
 
     private String buildPrompt(EmailRequest emailRequest) {
